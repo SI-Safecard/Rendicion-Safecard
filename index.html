@@ -32,6 +32,11 @@ main{max-width:560px;margin:0 auto;padding:14px}
 .hidden{display:none}
 input[type=file]{display:none}
 .pill{display:inline-block;font-size:10px;background:#FEF3C7;color:#92400E;padding:3px 8px;border-radius:12px;font-weight:700;margin-bottom:8px}
+.fotos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-bottom:10px}
+.foto-thumb{position:relative;border-radius:8px;overflow:hidden;background:#f0f0f0;aspect-ratio:1/1}
+.foto-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.foto-thumb .rm{position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:13px;font-weight:700;cursor:pointer;line-height:1}
+.foto-thumb .num{position:absolute;bottom:3px;left:3px;background:rgba(0,0,0,.6);color:#fff;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px}
 </style>
 </head>
 <body>
@@ -56,10 +61,11 @@ input[type=file]{display:none}
   </div>
 
   <div class="card" id="cardFoto">
-    <h2>📷 Foto de la boleta</h2>
-    <img id="preview" alt="Vista previa">
-    <input type="file" id="fileFoto" accept="image/*">
-    <button class="btn btn-secondary" id="btnElegirFoto" onclick="document.getElementById('fileFoto').click()">📷 Tomar o elegir foto</button>
+    <h2>📷 Foto(s) de la boleta</h2>
+    <div id="fotosGrid" class="fotos-grid"></div>
+    <input type="file" id="fileFoto" accept="image/*" multiple>
+    <button class="btn btn-secondary" id="btnElegirFoto" onclick="document.getElementById('fileFoto').click()">📷 Tomar o elegir foto(s)</button>
+    <button class="btn btn-secondary hidden" id="btnAgregarMas" onclick="document.getElementById('fileFoto').click()" style="margin-top:8px">➕ Agregar otra foto (mismo documento)</button>
     <button class="btn btn-primary hidden" id="btnAnalizar" onclick="analizarFoto()" style="margin-top:8px">🔍 Analizar boleta con IA</button>
     <button class="btn btn-secondary hidden" id="btnManual" onclick="mostrarRevision(null)" style="margin-top:8px">✏️ Llenar manualmente (sin IA)</button>
   </div>
@@ -114,24 +120,44 @@ try{
   if(pre && RESPONSABLES.includes(pre)) sel.value = pre;
 }catch(e){}
 
-let fotoBase64 = null, fotoMime = null;
+let fotos = []; // [{base64, mime}]
+
+function renderFotosGrid(){
+  const grid = document.getElementById('fotosGrid');
+  grid.innerHTML = fotos.map((f,i)=>`
+    <div class="foto-thumb">
+      <img src="data:${f.mime};base64,${f.base64}">
+      <span class="num">${i+1}</span>
+      <button class="rm" onclick="quitarFoto(${i})">✕</button>
+    </div>`).join('');
+  const hay = fotos.length > 0;
+  document.getElementById('btnAnalizar').classList.toggle('hidden', !hay);
+  document.getElementById('btnManual').classList.toggle('hidden', !hay);
+  document.getElementById('btnAgregarMas').classList.toggle('hidden', !hay);
+}
+function quitarFoto(i){
+  fotos.splice(i,1);
+  renderFotosGrid();
+}
 
 document.getElementById('fileFoto').addEventListener('change', function(){
-  const file = this.files && this.files[0];
-  if(!file) return;
-  fotoMime = file.type || 'image/jpeg';
-  const reader = new FileReader();
-  reader.onload = function(){
-    const dataUrl = reader.result;
-    fotoBase64 = dataUrl.split(',')[1];
-    const prev = document.getElementById('preview');
-    prev.src = dataUrl; prev.style.display = 'block';
-    document.getElementById('btnAnalizar').classList.remove('hidden');
-    document.getElementById('btnManual').classList.remove('hidden');
-    document.getElementById('cardRevision').classList.add('hidden');
-    setMsg('','');
-  };
-  reader.readAsDataURL(file);
+  const files = Array.from(this.files || []);
+  if(!files.length) return;
+  let pending = files.length;
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = function(){
+      fotos.push({ base64: reader.result.split(',')[1], mime: file.type || 'image/jpeg' });
+      pending--;
+      if(pending === 0){
+        renderFotosGrid();
+        document.getElementById('cardRevision').classList.add('hidden');
+        setMsg('','');
+      }
+    };
+    reader.readAsDataURL(file);
+  });
+  this.value = ''; // permite volver a elegir/tomar otra foto del mismo archivo si hace falta
 });
 
 function setMsg(txt, cls){
@@ -140,7 +166,7 @@ function setMsg(txt, cls){
 }
 
 async function analizarFoto(){
-  if(!fotoBase64){ setMsg('Primero toma o elige una foto.', 'err'); return; }
+  if(!fotos.length){ setMsg('Primero toma o elige al menos una foto.', 'err'); return; }
   const btn = document.getElementById('btnAnalizar');
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳ Analizando…';
@@ -149,7 +175,7 @@ async function analizarFoto(){
     const res = await fetch(window.RENDICION_ENDPOINT, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({accion:'extraer', foto:fotoBase64, mimeType:fotoMime})
+      body: JSON.stringify({accion:'extraer', fotos: fotos.map(f=>({data:f.base64, mimeType:f.mime}))})
     });
     const data = await res.json();
     if(!data || !data.ok){
@@ -213,7 +239,7 @@ async function enviarRendicion(){
     numeroDocumento: document.getElementById('r_numdoc').value.trim(),
     descripcion: document.getElementById('r_desc').value.trim(),
     monto: monto,
-    foto: fotoBase64, mimeType: fotoMime
+    fotos: fotos.map(f=>({data:f.base64, mimeType:f.mime}))
   };
 
   let sinConfirmar = false, ok = false, serverMsg = '';
@@ -239,11 +265,9 @@ async function enviarRendicion(){
   if(ok){
     setMsg(sinConfirmar ? '✅ Enviado (sin confirmación del servidor — revisa la planilla en un minuto).' : ('✅ Rendición enviada correctamente.'+(serverMsg?(' '+serverMsg):'')), 'ok');
     // Reset para la próxima boleta
-    fotoBase64 = null; fotoMime = null;
-    document.getElementById('preview').style.display='none';
+    fotos = [];
+    renderFotosGrid();
     document.getElementById('fileFoto').value='';
-    document.getElementById('btnAnalizar').classList.add('hidden');
-    document.getElementById('btnManual').classList.add('hidden');
     document.getElementById('cardRevision').classList.add('hidden');
     window.scrollTo({top:0, behavior:'smooth'});
   }
