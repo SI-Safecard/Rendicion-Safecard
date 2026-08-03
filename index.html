@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<meta name="theme-color" content="#E8541A">
+<title>Rendición de Gastos · Safecard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--br:#E8541A;--bg:#F3F4F6;--bd:#D6DEE7;--tx:#1E2A38;--mt:#64748B;--sf:#FFFFFF;--gn:#22C55E}
+html,body{background:var(--bg);color:var(--tx);font-family:'Segoe UI',Arial,sans-serif;min-height:100%}
+header{background:var(--br);color:#fff;padding:16px 18px;display:flex;align-items:center;gap:10px}
+header .ico{width:34px;height:34px;background:rgba(255,255,255,.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+header h1{font-size:15px;font-weight:800;line-height:1.2}
+header p{font-size:11px;opacity:.9}
+main{max-width:560px;margin:0 auto;padding:14px}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:12px}
+.card h2{font-size:11px;font-weight:700;color:var(--mt);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
+.f{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.f label{font-size:10px;font-weight:600;color:var(--mt);text-transform:uppercase;letter-spacing:.4px}
+.f input,.f select,.f textarea{border:1px solid var(--bd);border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit;outline:none;background:#fff;color:var(--tx)}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--br)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;border-radius:10px;border:none;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+.btn-primary{background:var(--br);color:#fff}
+.btn-secondary{background:#EEF2F6;color:var(--tx);border:1px solid var(--bd)}
+.btn-green{background:var(--gn);color:#fff}
+.btn[disabled]{opacity:.55;cursor:not-allowed}
+#preview{display:none;width:100%;max-height:340px;object-fit:contain;border-radius:10px;margin-bottom:10px;background:#f0f0f0}
+#msg{font-size:13px;font-weight:600;margin-top:8px;text-align:center}
+#msg.ok{color:#15803D}#msg.err{color:#B91C1C}#msg.info{color:var(--mt)}
+.hidden{display:none}
+input[type=file]{display:none}
+.pill{display:inline-block;font-size:10px;background:#FEF3C7;color:#92400E;padding:3px 8px;border-radius:12px;font-weight:700;margin-bottom:8px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="ico">🔒</div>
+  <div><h1>Rendición de Gastos</h1><p>Safecard</p></div>
+</header>
+
+<main>
+
+  <div class="card">
+    <h2>📋 Datos generales</h2>
+    <div class="f">
+      <label>Responsable</label>
+      <select id="responsable"></select>
+    </div>
+    <div class="f">
+      <label>Proyecto (opcional)</label>
+      <input id="proyecto" type="text" placeholder="Nombre del proyecto, si corresponde">
+    </div>
+  </div>
+
+  <div class="card" id="cardFoto">
+    <h2>📷 Foto de la boleta</h2>
+    <img id="preview" alt="Vista previa">
+    <input type="file" id="fileFoto" accept="image/*">
+    <button class="btn btn-secondary" id="btnElegirFoto" onclick="document.getElementById('fileFoto').click()">📷 Tomar o elegir foto</button>
+    <button class="btn btn-primary hidden" id="btnAnalizar" onclick="analizarFoto()" style="margin-top:8px">🔍 Analizar boleta con IA</button>
+    <button class="btn btn-secondary hidden" id="btnManual" onclick="mostrarRevision(null)" style="margin-top:8px">✏️ Llenar manualmente (sin IA)</button>
+  </div>
+
+  <div class="card hidden" id="cardRevision">
+    <h2>✅ Revisa y corrige antes de enviar</h2>
+    <div class="pill" id="pillIA">Datos leídos por IA — revísalos</div>
+    <div class="row2">
+      <div class="f"><label>Fecha</label><input id="r_fecha" type="date"></div>
+      <div class="f"><label>Periodo</label><input id="r_periodo" type="month"></div>
+    </div>
+    <div class="row2">
+      <div class="f"><label>Tipo de Documento</label>
+        <select id="r_tipo"><option>Boleta</option><option>Factura</option></select>
+      </div>
+      <div class="f"><label>Monto ($)</label><input id="r_monto" type="number" inputmode="numeric" placeholder="0"></div>
+    </div>
+    <div class="f">
+      <label>Cuenta</label>
+      <input id="r_cuenta" type="text" list="cuentasList" placeholder="Ej: Gastos Viaje/Movilización">
+      <datalist id="cuentasList">
+        <option value="Gastos Viaje/Movilización">
+        <option value="Gastos Operacionales">
+        <option value="Alimentación">
+        <option value="Combustible">
+        <option value="Materiales">
+        <option value="Otros">
+      </datalist>
+    </div>
+    <div class="f"><label>Proveedor</label><input id="r_proveedor" type="text" placeholder="Nombre del comercio"></div>
+    <div class="row2">
+      <div class="f"><label>N° Documento</label><input id="r_numdoc" type="text" placeholder="Folio / N°"></div>
+      <div class="f"><label>Descripción</label><input id="r_desc" type="text" placeholder="Qué se compró"></div>
+    </div>
+    <button class="btn btn-green" id="btnEnviar" onclick="enviarRendicion()" style="margin-top:6px">📨 Confirmar y enviar</button>
+  </div>
+
+  <div id="msg"></div>
+
+</main>
+
+<script>
+window.RENDICION_ENDPOINT = "https://script.google.com/macros/s/AKfycbzeFGW-oENm4Jk47xEmW3c-CsDqvQXzsdN3uluQfQZV0DV6etIhmOR8PPuo3TYlIEV_AA/exec";
+
+const RESPONSABLES = ["Francisco Morales","Ciro Forte","Ariel Lazo","Jhon Villegas","Sebastian Espinoza","Pedro Rivera","Matias Silva","Fabian Pavez","Nicolas Jara"];
+const sel = document.getElementById('responsable');
+sel.innerHTML = RESPONSABLES.map(n=>`<option value="${n}">${n}</option>`).join('');
+// Deep-link opcional: ?resp=Nombre%20Apellido preselecciona al técnico
+try{
+  const qp = new URLSearchParams(location.search);
+  const pre = qp.get('resp');
+  if(pre && RESPONSABLES.includes(pre)) sel.value = pre;
+}catch(e){}
+
+let fotoBase64 = null, fotoMime = null;
+
+document.getElementById('fileFoto').addEventListener('change', function(){
+  const file = this.files && this.files[0];
+  if(!file) return;
+  fotoMime = file.type || 'image/jpeg';
+  const reader = new FileReader();
+  reader.onload = function(){
+    const dataUrl = reader.result;
+    fotoBase64 = dataUrl.split(',')[1];
+    const prev = document.getElementById('preview');
+    prev.src = dataUrl; prev.style.display = 'block';
+    document.getElementById('btnAnalizar').classList.remove('hidden');
+    document.getElementById('btnManual').classList.remove('hidden');
+    document.getElementById('cardRevision').classList.add('hidden');
+    setMsg('','');
+  };
+  reader.readAsDataURL(file);
+});
+
+function setMsg(txt, cls){
+  const m = document.getElementById('msg');
+  m.textContent = txt; m.className = cls||'';
+}
+
+async function analizarFoto(){
+  if(!fotoBase64){ setMsg('Primero toma o elige una foto.', 'err'); return; }
+  const btn = document.getElementById('btnAnalizar');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Analizando…';
+  setMsg('Leyendo la boleta con IA, espera un momento…','info');
+  try{
+    const res = await fetch(window.RENDICION_ENDPOINT, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({accion:'extraer', foto:fotoBase64, mimeType:fotoMime})
+    });
+    const data = await res.json();
+    if(!data || !data.ok){
+      setMsg('No se pudo leer la boleta automáticamente: '+((data&&data.error)||'error desconocido')+'. Puedes llenarla manualmente abajo.','err');
+      mostrarRevision(null);
+      return;
+    }
+    setMsg('Listo — revisa los datos antes de enviar.','ok');
+    mostrarRevision(data.datos);
+  }catch(e){
+    setMsg('No se pudo contactar al analizador ('+(e.message||e)+'). Puedes llenarla manualmente abajo.','err');
+    mostrarRevision(null);
+  }finally{
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+function mostrarRevision(datos){
+  document.getElementById('cardRevision').classList.remove('hidden');
+  document.getElementById('pillIA').style.display = datos ? 'inline-block' : 'none';
+  const hoy = new Date().toISOString().slice(0,10);
+  document.getElementById('r_fecha').value = (datos && datos.fecha) || hoy;
+  document.getElementById('r_periodo').value = ((datos && datos.fecha) || hoy).slice(0,7);
+  document.getElementById('r_tipo').value = (datos && datos.tipoDocumento) || 'Boleta';
+  document.getElementById('r_monto').value = (datos && datos.monto) || '';
+  document.getElementById('r_proveedor').value = (datos && datos.proveedor) || '';
+  document.getElementById('r_numdoc').value = (datos && datos.numeroDocumento) || '';
+  document.getElementById('r_desc').value = (datos && datos.descripcion) || '';
+  document.getElementById('cardRevision').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+// Periodo se auto-completa si cambian la fecha a mano
+document.getElementById('r_fecha').addEventListener('change', function(){
+  if(this.value) document.getElementById('r_periodo').value = this.value.slice(0,7);
+});
+
+async function enviarRendicion(){
+  const responsable = sel.value;
+  const fecha = document.getElementById('r_fecha').value;
+  const periodo = document.getElementById('r_periodo').value;
+  const monto = document.getElementById('r_monto').value;
+  const cuenta = document.getElementById('r_cuenta').value.trim();
+  const proveedor = document.getElementById('r_proveedor').value.trim();
+  if(!fecha || !periodo || !monto || !cuenta || !proveedor){
+    setMsg('Completa al menos Fecha, Periodo, Cuenta, Proveedor y Monto.','err');
+    return;
+  }
+  const btn = document.getElementById('btnEnviar');
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ Enviando…';
+  setMsg('Enviando…','info');
+
+  const payload = {
+    accion:'confirmar',
+    responsable: responsable,
+    proyecto: document.getElementById('proyecto').value.trim(),
+    fecha: fecha, periodo: periodo,
+    cuenta: cuenta,
+    tipoDocumento: document.getElementById('r_tipo').value,
+    proveedor: proveedor,
+    numeroDocumento: document.getElementById('r_numdoc').value.trim(),
+    descripcion: document.getElementById('r_desc').value.trim(),
+    monto: monto,
+    foto: fotoBase64, mimeType: fotoMime
+  };
+
+  let sinConfirmar = false, ok = false, serverMsg = '';
+  try{
+    const res = await fetch(window.RENDICION_ENDPOINT, {
+      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if(data && data.ok){ ok = true; serverMsg = data.warn || ''; }
+    else throw new Error((data&&data.error)||'Respuesta inválida.');
+  }catch(networkErr){
+    // Típico error de CORS/redirect de Apps Script: reintenta a ciegas en no-cors.
+    try{
+      await fetch(window.RENDICION_ENDPOINT, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body: JSON.stringify(payload)});
+      ok = true; sinConfirmar = true;
+    }catch(e2){
+      setMsg('No se pudo enviar: '+(e2.message||e2),'err');
+      btn.disabled = false; btn.textContent = orig;
+      return;
+    }
+  }
+
+  if(ok){
+    setMsg(sinConfirmar ? '✅ Enviado (sin confirmación del servidor — revisa la planilla en un minuto).' : ('✅ Rendición enviada correctamente.'+(serverMsg?(' '+serverMsg):'')), 'ok');
+    // Reset para la próxima boleta
+    fotoBase64 = null; fotoMime = null;
+    document.getElementById('preview').style.display='none';
+    document.getElementById('fileFoto').value='';
+    document.getElementById('btnAnalizar').classList.add('hidden');
+    document.getElementById('btnManual').classList.add('hidden');
+    document.getElementById('cardRevision').classList.add('hidden');
+    window.scrollTo({top:0, behavior:'smooth'});
+  }
+  btn.disabled = false; btn.textContent = orig;
+}
+</script>
+</body>
+</html>
