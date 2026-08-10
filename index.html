@@ -86,6 +86,7 @@ input[type=file]{display:none}
     <button class="btn btn-green hidden" id="btnEnviarTodas" onclick="enviarCorreoFinal()" style="margin-top:8px">📨 Enviar correo</button>
   </div>
 
+  <div id="historialCierres"></div>
   <div id="boletasList"></div>
 
   <div id="msg"></div>
@@ -114,8 +115,19 @@ try{
 }catch(e){}
 
 let boletas = []; // {id, fotos:[{base64,mime}], datos:{fecha,periodo,tipoDocumento,monto,cuenta,proveedor,numeroDocumento,descripcion}, estado:'pendiente'|'ok'|'err', errMsg}
+let historialCierres = []; // {fecha, cantidad, monto} — cierres ya enviados por correo en esta sesión
 let nextId = 1;
 const hoy = new Date().toISOString().slice(0,10);
+
+function renderHistorialCierres(){
+  const cont = document.getElementById('historialCierres');
+  if(!historialCierres.length){ cont.innerHTML=''; return; }
+  cont.innerHTML = '<div class="card" style="background:#F0FDF4;border-color:#86EFAC">'
+    + '<h2 style="color:#15803D">✅ Cierres ya enviados en esta sesión</h2>'
+    + historialCierres.map((c,i)=>`<div style="font-size:12px;color:#15803D;padding:4px 0;${i>0?'border-top:1px solid #BBF7D0':''}">Cierre ${i+1} · ${c.fecha.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'})} · ${c.cantidad} boleta(s) · $${c.monto.toLocaleString('es-CL')}</div>`).join('')
+    + '<p style="font-size:11px;color:#166534;margin-top:6px">Las boletas de abajo son de un cierre nuevo, separado — cada carga a la planilla queda en su propia carpeta dentro de Drive.</p>'
+    + '</div>';
+}
 
 function nuevoDatosVacios(){
   return {fecha:hoy, periodo:hoy.slice(0,7), tipoDocumento:'Boleta', monto:'', cuenta:'Gastos Safecard', proveedor:'', numeroDocumento:'', descripcion:''};
@@ -140,27 +152,40 @@ document.getElementById('fileFoto').addEventListener('change', async function(){
   const files = Array.from(this.files || []);
   if(!files.length) return;
   this.disabled = true;
+  let exitos = 0;
+  const fallidas = [];
   // Cada foto elegida es una boleta independiente. Se procesan de a una, en el
   // orden elegido, para que en cargas masivas no se desordenen ni se sature
   // el navegador convirtiendo muchas fotos HEIC al mismo tiempo.
   for(let i=0;i<files.length;i++){
     const file = files[i];
     if(files.length>1) setMsg(`Procesando foto ${i+1} de ${files.length}…`,'info');
-    const b = { id: nextId++, fotos: [], datos: nuevoDatosVacios(), estado: 'pendiente', errMsg:'' };
-    const usable = await archivoAJpegSiHaceFalta(file);
-    await new Promise(resolve=>{
-      const reader = new FileReader();
-      reader.onload = function(){
-        b.fotos.push({ base64: reader.result.split(',')[1], mime: usable.type || 'image/jpeg' });
-        boletas.push(b);
-        renderBoletas();
-        resolve();
-      };
-      reader.onerror = function(){ resolve(); };
-      reader.readAsDataURL(usable);
-    });
+    try{
+      const b = { id: nextId++, fotos: [], datos: nuevoDatosVacios(), estado: 'pendiente', errMsg:'' };
+      const usable = await archivoAJpegSiHaceFalta(file);
+      const ok = await new Promise(resolve=>{
+        const reader = new FileReader();
+        reader.onload = function(){
+          b.fotos.push({ base64: reader.result.split(',')[1], mime: usable.type || 'image/jpeg' });
+          boletas.push(b);
+          renderBoletas();
+          resolve(true);
+        };
+        reader.onerror = function(){ resolve(false); };
+        reader.readAsDataURL(usable);
+      });
+      if(ok) exitos++; else fallidas.push(file.name || `foto ${i+1}`);
+    }catch(e){
+      fallidas.push((file.name || `foto ${i+1}`) + ' (' + (e.message||e) + ')');
+    }
   }
-  if(files.length>1) setMsg(`✅ ${files.length} foto(s) agregada(s) como boletas separadas.`,'ok');
+  if(files.length>1 || fallidas.length){
+    if(fallidas.length){
+      setMsg(`⚠️ Se agregaron ${exitos} de ${files.length} foto(s). No se pudieron leer: ${fallidas.join(', ')}. Intenta agregar esas de nuevo.`,'err');
+    } else {
+      setMsg(`✅ ${exitos} foto(s) agregada(s) como boletas separadas.`,'ok');
+    }
+  }
   this.disabled = false;
   this.value = '';
 });
@@ -347,7 +372,14 @@ async function cargarEnPlanilla(){
     setMsg('Se envió la carga, pero no se pudo confirmar la respuesta — revisa igual la planilla en Drive antes de enviar el correo.','ok');
   }else{
     const url = r.data.sheetUrl;
-    setMsg('✅ '+(r.data.guardadas||boletas.length)+' boleta(s) cargada(s) en tu planilla.'+(r.data.warn?(' '+r.data.warn):'')+' '+(url?('Ábrela y revísala: '+url):'')+' Cuando esté todo correcto, presiona "Enviar correo".', 'ok');
+    const totalApp = boletas.length;
+    const guardadas = r.data.guardadas!=null ? r.data.guardadas : totalApp;
+    const faltan = totalApp - guardadas;
+    if(faltan > 0){
+      setMsg(`⚠️ Se cargaron ${guardadas} de ${totalApp} boleta(s) — faltaron ${faltan}.`+(r.data.warn?(' Detalle: '+r.data.warn):' Revisa el registro de Ejecuciones en Apps Script para ver el motivo exacto.')+' '+(url?('Abre la planilla para confirmar: '+url):''), 'err');
+    } else {
+      setMsg(`✅ ${guardadas} de ${totalApp} boleta(s) cargada(s) en tu planilla.`+(r.data.warn?(' '+r.data.warn):'')+' '+(url?('Ábrela y revísala: '+url):'')+(r.data.folderUrl?(' · Fotos de este cierre: '+r.data.folderUrl):'')+' Cuando esté todo correcto, presiona "Enviar correo".', 'ok');
+    }
   }
   btn.disabled = false; btn.textContent = orig;
 }
@@ -366,6 +398,9 @@ async function enviarCorreoFinal(){
     setMsg('No se pudo enviar el correo: '+r.error,'err');
   }else{
     setMsg(r.sinConfirmar ? '✅ Enviado (sin confirmación del servidor).' : ('✅ Correo enviado con '+boletas.length+' boleta(s).'), 'ok');
+    const totalMonto = boletas.reduce((s,b)=>s+(Number(String(b.datos.monto||0).replace(/[^0-9]/g,''))||0),0);
+    historialCierres.push({ fecha: new Date(), cantidad: boletas.length, monto: totalMonto });
+    renderHistorialCierres();
     boletas = [];
     renderBoletas();
     document.getElementById('fileFoto').value='';
