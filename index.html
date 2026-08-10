@@ -96,12 +96,14 @@ input[type=file]{display:none}
   <button class="cerrar" onclick="cerrarFotoGrande()">✕</button>
   <img id="fotoModalImg" src="" onclick="event.stopPropagation()">
 </div>
+<datalist id="descripcionesList"></datalist>
 
 <script>
 window.RENDICION_ENDPOINT = "https://script.google.com/macros/s/AKfycbzeFGW-oENm4Jk47xEmW3c-CsDqvQXzsdN3uluQfQZV0DV6etIhmOR8PPuo3TYlIEV_AA/exec";
 
 const RESPONSABLES = ["Francisco Morales","Ciro Forte","Ariel Lazo","Jhon Villegas","Sebastian Espinoza","Pedro Rivera","Matias Silva","Fabian Pavez","Nicolas Jara","Pablo Abarca"];
-const DESCRIPCIONES = ["Estacionamiento","Alimentación","Materiales","Combustible","Peaje","Herramienta","Blue Max"];
+const DESCRIPCIONES = ["Estacionamiento","Alimentación","Materiales","Combustible","Peaje","Herramienta","Blue Max","Estadía"];
+document.getElementById('descripcionesList').innerHTML = DESCRIPCIONES.map(op=>`<option value="${op}">`).join('');
 
 const sel = document.getElementById('responsable');
 sel.innerHTML = RESPONSABLES.map(n=>`<option value="${n}">${n}</option>`).join('');
@@ -208,10 +210,7 @@ function renderBoletas(){
           </select>
         </div>
         <div class="f"><label>Descripción</label>
-          <select onchange="actualizarCampo(${b.id},'descripcion',this.value)">
-            <option value="" ${!d.descripcion?'selected':''}>Selecciona…</option>
-            ${DESCRIPCIONES.map(op=>`<option value="${op}" ${d.descripcion===op?'selected':''}>${op}</option>`).join('')}
-          </select>
+          <input type="text" list="descripcionesList" value="${(d.descripcion||'').replace(/"/g,'&quot;')}" placeholder="Elige o escribe una" onchange="actualizarCampo(${b.id},'descripcion',this.value)">
         </div>
       </div>
       <div class="f"><label>Cuenta</label>
