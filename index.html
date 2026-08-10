@@ -311,16 +311,22 @@ async function analizarTodas(){
   const btn = document.getElementById('btnAnalizarTodas');
   const orig = btn.textContent;
   btn.disabled = true;
-  const CONCURRENCIA = 4; // en paralelo, sin pasarse del límite por minuto de OpenRouter
+  // OpenRouter gratis permite ~20 solicitudes por minuto EN TOTAL (compartidas entre modelos).
+  // Mandar ráfagas más grandes que eso solo provoca que nos autobloqueemos con más 429.
+  const CONCURRENCIA = 2;
+  const ESPERA_ENTRE_LOTES_MS = 3200; // ritmo ~ dentro del límite de 20/min
   let hechas = 0;
-  setMsg(`Analizando ${boletas.length} boleta(s) con IA (varias a la vez)…`,'info');
+  const totalLotes = Math.ceil(boletas.length/CONCURRENCIA);
+  if(boletas.length>15) setMsg(`Analizando ${boletas.length} boleta(s). Con el nivel gratuito esto puede tardar unos minutos (límite de ~20 por minuto) — no cierres la pestaña.`,'info');
   for(let i=0;i<boletas.length;i+=CONCURRENCIA){
     const lote = boletas.slice(i, i+CONCURRENCIA);
+    const loteNum = Math.floor(i/CONCURRENCIA)+1;
     btn.textContent = `⏳ Analizando ${Math.min(i+CONCURRENCIA,boletas.length)}/${boletas.length}…`;
     await Promise.all(lote.map(b=>analizarUna(b)));
     hechas += lote.length;
     renderBoletas();
     setMsg(`Analizando… ${Math.min(hechas,boletas.length)}/${boletas.length}`,'info');
+    if(loteNum<totalLotes) await new Promise(r=>setTimeout(r, ESPERA_ENTRE_LOTES_MS));
   }
   btn.disabled = false; btn.textContent = orig;
   setMsg('Listo — revisa los datos de cada boleta antes de cargarlas.','ok');
