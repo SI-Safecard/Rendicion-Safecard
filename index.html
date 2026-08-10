@@ -55,6 +55,13 @@ input[type=file]{display:none}
 .estado-err{background:#FEE2E2;color:#B91C1C}
 .rm-boleta{background:none;border:none;color:var(--mt);font-size:13px;cursor:pointer;padding:4px}
 #addFotoBtn{margin-bottom:12px}
+.total-box{margin-top:10px;padding:10px 12px;border-radius:8px;font-size:13px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px}
+.total-box.ok{background:#DCFCE7;color:#15803D}
+.total-box.warn{background:#FEF3C7;color:#92400E}
+.total-box.over{background:#FEE2E2;color:#B91C1C}
+.total-box b{font-size:15px}
+.contador-box{margin-top:10px;padding:8px 10px;border-radius:8px;background:#EEF2F6;font-size:12px;color:var(--mt);text-align:center;font-weight:600}
+.contador-box b{color:var(--tx)}
 </style>
 </head>
 <body>
@@ -72,10 +79,17 @@ input[type=file]{display:none}
       <label>Responsable</label>
       <select id="responsable"></select>
     </div>
-    <div class="f">
-      <label>Proyecto (opcional, aplica a todas las boletas de esta tanda)</label>
-      <input id="proyecto" type="text" placeholder="Nombre del proyecto, si corresponde">
+    <div class="row2">
+      <div class="f">
+        <label>Proyecto (opcional)</label>
+        <input id="proyecto" type="text" placeholder="Nombre del proyecto, si corresponde">
+      </div>
+      <div class="f">
+        <label>Fondos Asignados ($)</label>
+        <input id="fondosAsignados" type="number" inputmode="numeric" placeholder="0">
+      </div>
     </div>
+    <div id="totalBox" class="total-box hidden"></div>
   </div>
 
   <input type="file" id="fileFoto" accept="image/*" multiple>
@@ -84,6 +98,7 @@ input[type=file]{display:none}
     <button class="btn btn-secondary hidden" id="btnAnalizarTodas" onclick="analizarTodas()" style="margin-top:8px">🔍 Analizar todas con IA</button>
     <button class="btn btn-secondary hidden" id="btnCargar" onclick="cargarEnPlanilla()" style="margin-top:8px">📥 Cargar en planilla (validar)</button>
     <button class="btn btn-green hidden" id="btnEnviarTodas" onclick="enviarCorreoFinal()" style="margin-top:8px">📨 Enviar correo</button>
+    <div id="contadorBox" class="contador-box hidden"></div>
   </div>
 
   <div id="historialCierres"></div>
@@ -250,7 +265,41 @@ function renderBoletas(){
   document.getElementById('btnAnalizarTodas').classList.toggle('hidden', boletas.length===0);
   document.getElementById('btnCargar').classList.toggle('hidden', boletas.length===0);
   document.getElementById('btnEnviarTodas').classList.toggle('hidden', boletas.length===0);
+  renderContador();
+  renderTotalBox();
 }
+
+function renderContador(){
+  const cont = document.getElementById('contadorBox');
+  if(!boletas.length){ cont.classList.add('hidden'); return; }
+  cont.classList.remove('hidden');
+  const totalFotos = boletas.reduce((s,b)=>s+b.fotos.length,0);
+  const analizadas = boletas.filter(b=>b.estado==='ok').length;
+  const pendientes = boletas.filter(b=>b.estado==='pendiente').length;
+  const errores = boletas.filter(b=>b.estado==='err').length;
+  cont.innerHTML = `<b>${boletas.length}</b> boleta(s) cargada(s) (<b>${totalFotos}</b> foto(s)) · <b>${analizadas}</b> leída(s) por IA`
+    + (pendientes?` · <b>${pendientes}</b> pendiente(s)`:'')
+    + (errores?` · <b>${errores}</b> para revisar a mano`:'');
+}
+
+function renderTotalBox(){
+  const box = document.getElementById('totalBox');
+  if(!boletas.length){ box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const totalBoletas = boletas.reduce((s,b)=>s+(Number(String(b.datos.monto||0).replace(/[^0-9]/g,''))||0),0);
+  const fondos = Number(document.getElementById('fondosAsignados').value || 0);
+  let cls='ok', extra='';
+  if(fondos>0){
+    const disponible = fondos - totalBoletas;
+    if(disponible<0){ cls='over'; extra=` · ⚠️ Excede fondos por $${Math.abs(disponible).toLocaleString('es-CL')}`; }
+    else { cls='ok'; extra=` · Disponible: $${disponible.toLocaleString('es-CL')}`; }
+  } else {
+    cls='warn';
+  }
+  box.className = 'total-box ' + cls;
+  box.innerHTML = `<span>Suma de las ${boletas.length} boleta(s):</span><b>$${totalBoletas.toLocaleString('es-CL')}</b><span>${extra}</span>`;
+}
+document.getElementById('fondosAsignados').addEventListener('input', renderTotalBox);
 
 function setMsg(txt, cls){
   const m = document.getElementById('msg');
@@ -335,22 +384,16 @@ async function analizarTodas(){
   const btn = document.getElementById('btnAnalizarTodas');
   const orig = btn.textContent;
   btn.disabled = true;
-  // OpenRouter gratis permite ~20 solicitudes por minuto EN TOTAL (compartidas entre modelos).
-  // Mandar ráfagas más grandes que eso solo provoca que nos autobloqueemos con más 429.
-  const CONCURRENCIA = 2;
-  const ESPERA_ENTRE_LOTES_MS = 3200; // ritmo ~ dentro del límite de 20/min
+  const CONCURRENCIA = 6; // el OCR de Drive no tiene el límite de 20/min que sí tenía OpenRouter
   let hechas = 0;
-  const totalLotes = Math.ceil(boletas.length/CONCURRENCIA);
-  if(boletas.length>15) setMsg(`Analizando ${boletas.length} boleta(s). Con el nivel gratuito esto puede tardar unos minutos (límite de ~20 por minuto) — no cierres la pestaña.`,'info');
+  if(boletas.length>15) setMsg(`Analizando ${boletas.length} boleta(s) con OCR…`,'info');
   for(let i=0;i<boletas.length;i+=CONCURRENCIA){
     const lote = boletas.slice(i, i+CONCURRENCIA);
-    const loteNum = Math.floor(i/CONCURRENCIA)+1;
     btn.textContent = `⏳ Analizando ${Math.min(i+CONCURRENCIA,boletas.length)}/${boletas.length}…`;
     await Promise.all(lote.map(b=>analizarUna(b)));
     hechas += lote.length;
     renderBoletas();
     setMsg(`Analizando… ${Math.min(hechas,boletas.length)}/${boletas.length}`,'info');
-    if(loteNum<totalLotes) await new Promise(r=>setTimeout(r, ESPERA_ENTRE_LOTES_MS));
   }
   btn.disabled = false; btn.textContent = orig;
   setMsg('Listo — revisa los datos de cada boleta antes de cargarlas.','ok');
