@@ -134,21 +134,32 @@ async function archivoAJpegSiHaceFalta(file){
   }
 }
 
-document.getElementById('fileFoto').addEventListener('change', function(){
+document.getElementById('fileFoto').addEventListener('change', async function(){
   const files = Array.from(this.files || []);
   if(!files.length) return;
-  // Cada foto elegida es una boleta independiente (aunque se hayan elegido varias de una vez)
-  files.forEach(async file=>{
+  this.disabled = true;
+  // Cada foto elegida es una boleta independiente. Se procesan de a una, en el
+  // orden elegido, para que en cargas masivas no se desordenen ni se sature
+  // el navegador convirtiendo muchas fotos HEIC al mismo tiempo.
+  for(let i=0;i<files.length;i++){
+    const file = files[i];
+    if(files.length>1) setMsg(`Procesando foto ${i+1} de ${files.length}…`,'info');
     const b = { id: nextId++, fotos: [], datos: nuevoDatosVacios(), estado: 'pendiente', errMsg:'' };
     const usable = await archivoAJpegSiHaceFalta(file);
-    const reader = new FileReader();
-    reader.onload = function(){
-      b.fotos.push({ base64: reader.result.split(',')[1], mime: usable.type || 'image/jpeg' });
-      boletas.push(b);
-      renderBoletas();
-    };
-    reader.readAsDataURL(usable);
-  });
+    await new Promise(resolve=>{
+      const reader = new FileReader();
+      reader.onload = function(){
+        b.fotos.push({ base64: reader.result.split(',')[1], mime: usable.type || 'image/jpeg' });
+        boletas.push(b);
+        renderBoletas();
+        resolve();
+      };
+      reader.onerror = function(){ resolve(); };
+      reader.readAsDataURL(usable);
+    });
+  }
+  if(files.length>1) setMsg(`✅ ${files.length} foto(s) agregada(s) como boletas separadas.`,'ok');
+  this.disabled = false;
   this.value = '';
 });
 
@@ -300,11 +311,16 @@ async function analizarTodas(){
   const btn = document.getElementById('btnAnalizarTodas');
   const orig = btn.textContent;
   btn.disabled = true;
-  setMsg('Analizando boletas con IA, una por una…','info');
-  for(let i=0;i<boletas.length;i++){
-    btn.textContent = `⏳ Analizando ${i+1}/${boletas.length}…`;
-    await analizarUna(boletas[i]);
+  const CONCURRENCIA = 4; // en paralelo, sin pasarse del límite por minuto de OpenRouter
+  let hechas = 0;
+  setMsg(`Analizando ${boletas.length} boleta(s) con IA (varias a la vez)…`,'info');
+  for(let i=0;i<boletas.length;i+=CONCURRENCIA){
+    const lote = boletas.slice(i, i+CONCURRENCIA);
+    btn.textContent = `⏳ Analizando ${Math.min(i+CONCURRENCIA,boletas.length)}/${boletas.length}…`;
+    await Promise.all(lote.map(b=>analizarUna(b)));
+    hechas += lote.length;
     renderBoletas();
+    setMsg(`Analizando… ${Math.min(hechas,boletas.length)}/${boletas.length}`,'info');
   }
   btn.disabled = false; btn.textContent = orig;
   setMsg('Listo — revisa los datos de cada boleta antes de cargarlas.','ok');
