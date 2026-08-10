@@ -406,7 +406,7 @@ async function cargarEnPlanilla(){
   btn.disabled = true; btn.textContent = '⏳ Cargando en la planilla…';
   setMsg('Cargando en tu planilla de Drive…','info');
 
-  const payload = { accion:'cargar', responsable: sel.value, proyecto: document.getElementById('proyecto').value.trim(), documentos: armarDocumentos() };
+  const payload = { accion:'cargar', responsable: sel.value, proyecto: document.getElementById('proyecto').value.trim(), fondosAsignados: document.getElementById('fondosAsignados').value || 0, documentos: armarDocumentos() };
   const r = await postConReintento(payload);
 
   if(!r.ok){
