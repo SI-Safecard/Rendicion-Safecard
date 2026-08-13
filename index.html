@@ -129,7 +129,7 @@ const DESCRIPCIONES = ["Estacionamiento","Alimentación","Materiales","Combustib
 document.getElementById('descripcionesList').innerHTML = DESCRIPCIONES.map(op=>`<option value="${op}">`).join('');
 
 const sel = document.getElementById('responsable');
-sel.innerHTML = RESPONSABLES.map(n=>`<option value="${n}">${n}</option>`).join('');
+sel.innerHTML = '<option value="">— selecciona el responsable —</option>' + RESPONSABLES.map(n=>`<option value="${n}">${n}</option>`).join('');
 try{
   const qp = new URLSearchParams(location.search);
   const pre = qp.get('resp');
@@ -364,6 +364,7 @@ async function analizarUna(b){
 }
 
 function validarBoletas(){
+  if(!sel.value){ setMsg('Elige el Responsable antes de continuar (no quedó nadie seleccionado).','err'); return false; }
   if(!boletas.length){ setMsg('Agrega al menos una boleta.','err'); return false; }
   for(const b of boletas){
     if(!b.datos.fecha || !b.datos.proveedor || !b.datos.monto){
@@ -429,27 +430,28 @@ async function analizarTodas(){
 
 async function cargarEnPlanilla(){
   if(!validarBoletas()) return;
+  const responsable = sel.value;
   const btn = document.getElementById('btnCargar');
   const orig = btn.textContent;
   btn.disabled = true; btn.textContent = '⏳ Cargando en la planilla…';
-  setMsg('Cargando en tu planilla de Drive…','info');
+  setMsg('Cargando en la planilla de '+responsable+'…','info');
 
-  const payload = { accion:'cargar', responsable: sel.value, proyecto: document.getElementById('proyecto').value.trim(), fondosAsignados: document.getElementById('fondosAsignados').value || 0, documentos: armarDocumentos() };
+  const payload = { accion:'cargar', responsable, proyecto: document.getElementById('proyecto').value.trim(), fondosAsignados: document.getElementById('fondosAsignados').value || 0, documentos: armarDocumentos() };
   const r = await postConReintento(payload);
 
   if(!r.ok){
-    setMsg('No se pudo cargar en la planilla: '+r.error,'err');
+    setMsg('No se pudo cargar en la planilla de '+responsable+': '+r.error,'err');
   }else if(r.sinConfirmar){
-    setMsg('Se envió la carga, pero no se pudo confirmar la respuesta — revisa igual la planilla en Drive antes de enviar el correo.','ok');
+    setMsg('Se envió la carga a nombre de '+responsable+', pero no se pudo confirmar la respuesta — revisa igual la planilla en Drive antes de enviar el correo.','ok');
   }else{
     const url = r.data.sheetUrl;
     const totalApp = boletas.length;
     const guardadas = r.data.guardadas!=null ? r.data.guardadas : totalApp;
     const faltan = totalApp - guardadas;
     if(faltan > 0){
-      setMsg(`⚠️ Se cargaron ${guardadas} de ${totalApp} boleta(s) — faltaron ${faltan}.`+(r.data.warn?(' Detalle: '+r.data.warn):' Revisa el registro de Ejecuciones en Apps Script para ver el motivo exacto.')+' '+(url?('Abre la planilla para confirmar: '+url):''), 'err');
+      setMsg(`⚠️ Se cargaron ${guardadas} de ${totalApp} boleta(s) a nombre de ${responsable} — faltaron ${faltan}.`+(r.data.warn?(' Detalle: '+r.data.warn):' Revisa el registro de Ejecuciones en Apps Script para ver el motivo exacto.')+' '+(url?('Abre la planilla de '+responsable+' para confirmar: '+url):''), 'err');
     } else {
-      setMsg(`✅ ${guardadas} de ${totalApp} boleta(s) cargada(s) en tu planilla.`+(r.data.warn?(' '+r.data.warn):'')+' '+(url?('Ábrela y revísala: '+url):'')+(r.data.folderUrl?(' · Fotos de este cierre: '+r.data.folderUrl):'')+' Cuando esté todo correcto, presiona "Enviar correo".', 'ok');
+      setMsg(`✅ ${guardadas} de ${totalApp} boleta(s) cargada(s) en la planilla de ${responsable}.`+(r.data.warn?(' '+r.data.warn):'')+' '+(url?('Ábrela y revísala: '+url):'')+(r.data.folderUrl?(' · Fotos de este cierre: '+r.data.folderUrl):'')+' Cuando esté todo correcto, presiona "Enviar correo".', 'ok');
     }
   }
   btn.disabled = false; btn.textContent = orig;
