@@ -117,7 +117,7 @@ input[type=file]{display:none}
     <h2>🏁 Cerrar rendición y enviar correo</h2>
     <p class="small" style="margin-bottom:10px;color:var(--mt)">Cuando termines la estadía (puede ser días o semanas después de haber cargado las boletas), revisa aquí todo lo que quedó pendiente de ese mes, sube las fotos de todas las boletas juntas, y envía el correo de cierre.</p>
     <div class="f"><label>Responsable</label><select id="respCierre"></select></div>
-    <button class="btn btn-secondary" onclick="verPendientes()" style="margin-top:8px">🔍 Ver boletas pendientes de este mes</button>
+    <button class="btn btn-secondary" onclick="verPendientes()" style="margin-top:8px">🔍 Ver boletas pendientes de enviar</button>
     <div id="pendientesBox" style="margin-top:12px"></div>
     <div id="fotosCierreWrap" class="hidden" style="margin-top:12px">
       <label style="font-size:10px;font-weight:600;color:var(--mt);text-transform:uppercase;letter-spacing:.4px">📎 Fotos de todas las boletas (todas juntas, para el correo)</label>
@@ -414,7 +414,7 @@ async function verPendientes(){
   pendientesCache = r.data;
   const filas = r.data.filas || [];
   if(!filas.length){
-    box.innerHTML = '<p class="small" style="color:var(--mt)">No hay boletas pendientes de enviar para ese mes (o ya se enviaron todas — revisa el mes o el nombre).</p>';
+    box.innerHTML = '<p class="small" style="color:var(--mt)">No hay boletas pendientes de enviar (o ya se enviaron todas, o todavía no se ha cargado ninguna) — revisa el nombre del responsable.</p>';
     document.getElementById('fotosCierreWrap').classList.add('hidden');
     return;
   }
@@ -430,7 +430,7 @@ async function verPendientes(){
 
 async function enviarCorreoFinal(){
   if(!pendientesCache || !pendientesCache.filas || !pendientesCache.filas.length){
-    setMsg('Primero presiona "Ver boletas pendientes de este mes".','err'); return;
+    setMsg('Primero presiona "Ver boletas pendientes de enviar".','err'); return;
   }
   const responsable = selCierre.value;
   const btn = document.getElementById('btnEnviarTodas');
