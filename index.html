@@ -20,7 +20,10 @@ header img{height:34px}
 header .ico{width:34px;height:34px;background:rgba(255,255,255,.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 header h1{font-size:15px;font-weight:800;line-height:1.2}
 header p{font-size:11px;opacity:.9}
-main{max-width:600px;margin:0 auto;padding:14px}
+main{max-width:1400px;margin:0 auto;padding:14px}
+.top-card{max-width:640px;margin-left:auto;margin-right:auto}
+#boletasList{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;align-items:start}
+@media (max-width:700px){ #boletasList{grid-template-columns:1fr} }
 .card{background:var(--sf);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:12px}
 .card h2{font-size:11px;font-weight:700;color:var(--mt);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px}
 .f{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
@@ -39,6 +42,8 @@ main{max-width:600px;margin:0 auto;padding:14px}
 .hidden{display:none}
 input[type=file]{display:none}
 .fotos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-bottom:10px}
+.fotos-grid-sm{grid-template-columns:repeat(auto-fill,minmax(56px,1fr));margin-top:10px;margin-bottom:0;max-width:200px}
+.fotos-grid-sm .foto-thumb{aspect-ratio:1/1}
 .foto-thumb{position:relative;border-radius:8px;overflow:hidden;background:#f0f0f0;aspect-ratio:1/1}
 .foto-thumb img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
 .foto-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center;padding:16px}
@@ -73,7 +78,7 @@ input[type=file]{display:none}
 
 <main>
 
-  <div class="card">
+  <div class="card top-card">
     <h2>📋 Datos generales</h2>
     <div class="f">
       <label>Responsable</label>
@@ -93,9 +98,8 @@ input[type=file]{display:none}
   </div>
 
   <input type="file" id="fileFoto" accept="image/*" multiple>
-  <div class="card" style="padding:12px">
+  <div class="card top-card" style="padding:12px">
     <button class="btn btn-primary" id="addFotoBtn" onclick="document.getElementById('fileFoto').click()">➕ Agregar boleta (foto nueva)</button>
-    <button class="btn btn-secondary hidden" id="btnAnalizarTodas" onclick="analizarTodas()" style="margin-top:8px">🔍 Analizar todas con IA</button>
     <button class="btn btn-secondary hidden" id="btnCargar" onclick="cargarEnPlanilla()" style="margin-top:8px">📥 Cargar en planilla (validar)</button>
     <button class="btn btn-green hidden" id="btnEnviarTodas" onclick="enviarCorreoFinal()" style="margin-top:8px">📨 Enviar correo</button>
     <div id="aplicarTodasBox" class="hidden" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bd)">
@@ -108,7 +112,7 @@ input[type=file]{display:none}
     <div id="contadorBox" class="contador-box hidden"></div>
   </div>
 
-  <div id="historialCierres"></div>
+  <div id="historialCierres" class="top-card"></div>
   <div id="boletasList"></div>
 
   <div id="msg"></div>
@@ -198,9 +202,6 @@ document.getElementById('fileFoto').addEventListener('change', async function(){
       });
       if(ok){
         exitos++;
-        if(files.length>1) setMsg(`Leyendo boleta ${i+1} de ${files.length} con IA…`,'info');
-        await analizarUna(b); // lectura automática apenas se agrega la foto, sin pasos extra
-        renderBoletas();
       } else fallidas.push(file.name || `foto ${i+1}`);
     }catch(e){
       fallidas.push((file.name || `foto ${i+1}`) + ' (' + (e.message||e) + ')');
@@ -210,7 +211,7 @@ document.getElementById('fileFoto').addEventListener('change', async function(){
     if(fallidas.length){
       setMsg(`⚠️ Se agregaron ${exitos} de ${files.length} foto(s). No se pudieron leer: ${fallidas.join(', ')}. Intenta agregar esas de nuevo.`,'err');
     } else {
-      setMsg(`✅ ${exitos} foto(s) agregada(s) y leídas automáticamente. Revisa los datos de cada boleta antes de cargarlas.`,'ok');
+      setMsg(`✅ ${exitos} foto(s) agregada(s). Completa los datos de cada boleta a mano.`,'ok');
     }
   }
   this.disabled = false;
@@ -249,45 +250,32 @@ function renderBoletas(){
   const cont = document.getElementById('boletasList');
   cont.innerHTML = boletas.map((b,i)=>{
     const d = b.datos;
-    const estadoCls = b.estado==='ok' ? 'estado-ok' : (b.estado==='err' ? 'estado-err' : 'estado-pendiente');
-    const estadoTxt = b.estado==='ok' ? '✅ Leída por IA' : (b.estado==='err' ? '⚠️ Revisar manual' : '⏳ Pendiente de analizar');
     return `<div class="boleta-card">
       <div class="boleta-head">
         <b>Boleta #${i+1}</b>
-        <span class="estado ${estadoCls}">${estadoTxt}</span>
         <button class="rm-boleta" onclick="quitarBoleta(${b.id})">🗑️</button>
       </div>
-      <div class="fotos-grid">
-        ${b.fotos.map((f,fi)=>`<div class="foto-thumb"><img loading="lazy" decoding="async" src="data:${f.mime};base64,${f.base64}" onclick="verFotoGrande('data:${f.mime};base64,${f.base64}')"><button class="rm" onclick="event.stopPropagation();quitarFoto(${b.id},${fi})">✕</button></div>`).join('')}
+      <div class="f"><label>Fecha</label><input type="date" value="${d.fecha||''}" onchange="actualizarCampo(${b.id},'fecha',this.value)"></div>
+      <div class="f"><label>Monto ($)</label><input type="number" inputmode="numeric" value="${d.monto||''}" placeholder="0" onchange="actualizarCampo(${b.id},'monto',this.value)"></div>
+      <div class="f"><label>Tipo de Documento</label>
+        <select onchange="actualizarCampo(${b.id},'tipoDocumento',this.value)">
+          <option ${d.tipoDocumento==='Boleta'?'selected':''}>Boleta</option>
+          <option ${d.tipoDocumento==='Factura'?'selected':''}>Factura</option>
+        </select>
       </div>
-      <div class="row2">
-        <div class="f"><label>Fecha</label><input type="date" value="${d.fecha||''}" onchange="actualizarCampo(${b.id},'fecha',this.value)"></div>
-        <div class="f"><label>Monto ($)</label><input type="number" inputmode="numeric" value="${d.monto||''}" placeholder="0" onchange="actualizarCampo(${b.id},'monto',this.value)"></div>
-      </div>
-      <div class="row2">
-        <div class="f"><label>Tipo de Documento</label>
-          <select onchange="actualizarCampo(${b.id},'tipoDocumento',this.value)">
-            <option ${d.tipoDocumento==='Boleta'?'selected':''}>Boleta</option>
-            <option ${d.tipoDocumento==='Factura'?'selected':''}>Factura</option>
-          </select>
-        </div>
-        <div class="f"><label>Descripción</label>
-          <input type="text" list="descripcionesList" value="${(d.descripcion||'').replace(/"/g,'&quot;')}" placeholder="Elige o escribe una" onchange="actualizarCampo(${b.id},'descripcion',this.value)">
-        </div>
-      </div>
-      <div class="f"><label>Cuenta</label>
-        <input type="text" value="Gastos Safecard" disabled style="background:#EEF2F6;color:var(--mt)">
+      <div class="f"><label>Descripción</label>
+        <input type="text" list="descripcionesList" value="${(d.descripcion||'').replace(/"/g,'&quot;')}" placeholder="Elige o escribe una" onchange="actualizarCampo(${b.id},'descripcion',this.value)">
       </div>
       <div class="f"><label>Proveedor</label><input type="text" value="${(d.proveedor||'').replace(/"/g,'&quot;')}" placeholder="Nombre del comercio" onchange="actualizarCampo(${b.id},'proveedor',this.value)"></div>
-      <div class="row2">
-        <div class="f"><label>N° Documento</label><input type="text" value="${(d.numeroDocumento||'').replace(/"/g,'&quot;')}" placeholder="Folio / N°" onchange="actualizarCampo(${b.id},'numeroDocumento',this.value)"></div>
-        <div class="f"><label>Proyecto</label><input type="text" value="${(d.proyecto||'').replace(/"/g,'&quot;')}" placeholder="Proyecto (opcional)" onchange="actualizarCampo(${b.id},'proyecto',this.value)"></div>
+      <div class="f"><label>N° Documento</label><input type="text" value="${(d.numeroDocumento||'').replace(/"/g,'&quot;')}" placeholder="Folio / N°" onchange="actualizarCampo(${b.id},'numeroDocumento',this.value)"></div>
+      <div class="f"><label>Proyecto</label><input type="text" value="${(d.proyecto||'').replace(/"/g,'&quot;')}" placeholder="Proyecto (opcional)" onchange="actualizarCampo(${b.id},'proyecto',this.value)"></div>
+      <label style="font-size:10px;font-weight:600;color:var(--mt);text-transform:uppercase;letter-spacing:.4px;display:block;margin-top:10px">📎 Foto(s) de respaldo</label>
+      <div class="fotos-grid fotos-grid-sm">
+        ${b.fotos.map((f,fi)=>`<div class="foto-thumb"><img loading="lazy" decoding="async" src="data:${f.mime};base64,${f.base64}" onclick="verFotoGrande('data:${f.mime};base64,${f.base64}')"><button class="rm" onclick="event.stopPropagation();quitarFoto(${b.id},${fi})">✕</button></div>`).join('')}
       </div>
-      ${b.errMsg ? `<div style="font-size:11px;color:#B91C1C;margin-top:4px">${b.errMsg}</div>` : ''}
     </div>`;
   }).join('');
 
-  document.getElementById('btnAnalizarTodas').classList.toggle('hidden', boletas.length===0);
   document.getElementById('btnCargar').classList.toggle('hidden', boletas.length===0);
   document.getElementById('btnEnviarTodas').classList.toggle('hidden', boletas.length===0);
   document.getElementById('aplicarTodasBox').classList.toggle('hidden', boletas.length===0);
@@ -300,12 +288,7 @@ function renderContador(){
   if(!boletas.length){ cont.classList.add('hidden'); return; }
   cont.classList.remove('hidden');
   const totalFotos = boletas.reduce((s,b)=>s+b.fotos.length,0);
-  const analizadas = boletas.filter(b=>b.estado==='ok').length;
-  const pendientes = boletas.filter(b=>b.estado==='pendiente').length;
-  const errores = boletas.filter(b=>b.estado==='err').length;
-  cont.innerHTML = `<b>${boletas.length}</b> boleta(s) cargada(s) (<b>${totalFotos}</b> foto(s)) · <b>${analizadas}</b> leída(s) por IA`
-    + (pendientes?` · <b>${pendientes}</b> pendiente(s)`:'')
-    + (errores?` · <b>${errores}</b> para revisar a mano`:'');
+  cont.innerHTML = `<b>${boletas.length}</b> boleta(s) cargada(s) (<b>${totalFotos}</b> foto(s))`;
 }
 
 function renderTotalBox(){
@@ -337,35 +320,6 @@ function verFotoGrande(dataUrl){
 }
 function cerrarFotoGrande(){
   document.getElementById('fotoModal').classList.remove('show');
-}
-
-function mejorCategoria(txt){
-  if(!txt) return '';
-  const norm = String(txt).toLowerCase();
-  const found = DESCRIPCIONES.find(op => op.toLowerCase()===norm);
-  return found || '';
-}
-
-async function analizarUna(b){
-  try{
-    const res = await fetch(window.RENDICION_ENDPOINT, {
-      method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify({accion:'extraer', fotos: b.fotos.map(f=>({data:f.base64, mimeType:f.mime}))})
-    });
-    const data = await res.json();
-    if(!data || !data.ok) throw new Error((data&&data.error)||'error desconocido');
-    const dt = data.datos || {};
-    b.datos.fecha = dt.fecha || b.datos.fecha;
-    b.datos.periodo = (dt.fecha || b.datos.fecha || hoy).slice(0,7);
-    b.datos.tipoDocumento = dt.tipoDocumento || b.datos.tipoDocumento;
-    b.datos.monto = dt.monto || b.datos.monto;
-    b.datos.proveedor = dt.proveedor || b.datos.proveedor;
-    b.datos.numeroDocumento = dt.numeroDocumento || b.datos.numeroDocumento;
-    b.datos.descripcion = mejorCategoria(dt.descripcion) || b.datos.descripcion;
-    b.estado = 'ok'; b.errMsg = '';
-  }catch(e){
-    b.estado = 'err'; b.errMsg = 'No se pudo leer con IA: '+(e.message||e)+'. Complétala a mano.';
-  }
 }
 
 function validarBoletas(){
@@ -412,25 +366,6 @@ async function postConReintento(payload){
       return {ok:false, error:e2.message||String(e2)};
     }
   }
-}
-
-async function analizarTodas(){
-  const btn = document.getElementById('btnAnalizarTodas');
-  const orig = btn.textContent;
-  btn.disabled = true;
-  const CONCURRENCIA = 6; // el OCR de Drive no tiene el límite de 20/min que sí tenía OpenRouter
-  let hechas = 0;
-  if(boletas.length>15) setMsg(`Analizando ${boletas.length} boleta(s) con OCR…`,'info');
-  for(let i=0;i<boletas.length;i+=CONCURRENCIA){
-    const lote = boletas.slice(i, i+CONCURRENCIA);
-    btn.textContent = `⏳ Analizando ${Math.min(i+CONCURRENCIA,boletas.length)}/${boletas.length}…`;
-    await Promise.all(lote.map(b=>analizarUna(b)));
-    hechas += lote.length;
-    renderBoletas();
-    setMsg(`Analizando… ${Math.min(hechas,boletas.length)}/${boletas.length}`,'info');
-  }
-  btn.disabled = false; btn.textContent = orig;
-  setMsg('Listo — revisa los datos de cada boleta antes de cargarlas.','ok');
 }
 
 async function cargarEnPlanilla(){
