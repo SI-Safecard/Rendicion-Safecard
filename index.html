@@ -40,7 +40,6 @@ main{max-width:1400px;margin:0 auto;padding:14px}
 #msg{font-size:13px;font-weight:600;margin-top:8px;text-align:center}
 #msg.ok{color:#15803D}#msg.err{color:#B91C1C}#msg.info{color:var(--mt)}
 .hidden{display:none}
-input[type=file]{display:none}
 .fotos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-bottom:10px}
 .fotos-grid-sm{grid-template-columns:repeat(auto-fill,minmax(56px,1fr));margin-top:10px;margin-bottom:0;max-width:200px}
 .fotos-grid-sm .foto-thumb{aspect-ratio:1/1}
@@ -116,7 +115,11 @@ input[type=file]{display:none}
   <div class="card top-card" style="border-color:#86EFAC;background:#F8FFFB">
     <h2>🏁 Cerrar rendición y enviar correo</h2>
     <p class="small" style="margin-bottom:10px;color:var(--mt)">Cuando termines la estadía (puede ser días o semanas después de haber cargado las boletas), revisa aquí todo lo que quedó pendiente de ese mes, sube las fotos de todas las boletas juntas, y envía el correo de cierre.</p>
-    <div class="f"><label>Responsable</label><select id="respCierre"></select></div>
+    <div class="row2">
+      <div class="f"><label>Responsable</label><select id="respCierre"></select></div>
+      <div class="f"><label>Mes a revisar</label><input type="month" id="periodoCierre"></div>
+    </div>
+    <p class="small" style="color:var(--mt);margin-top:-4px;margin-bottom:8px">Solo aplica para responsables con formato de bloques (planilla personal). Para los demás, siempre se busca la pestaña de cierre abierta más reciente, sin importar el mes.</p>
     <button class="btn btn-secondary" onclick="verPendientes()" style="margin-top:8px">🔍 Ver boletas pendientes de enviar</button>
     <div id="pendientesBox" style="margin-top:12px"></div>
     <div id="fotosCierreWrap" class="hidden" style="margin-top:12px">
@@ -150,6 +153,7 @@ const selCierre = document.getElementById('respCierre');
 selCierre.innerHTML = sel.innerHTML;
 sel.addEventListener('change', ()=>{ selCierre.value = sel.value; });
 selCierre.addEventListener('change', ()=>{ sel.value = selCierre.value; });
+document.getElementById('periodoCierre').value = new Date().toISOString().slice(0,7);
 try{
   const qp = new URLSearchParams(location.search);
   const pre = qp.get('resp');
@@ -406,7 +410,8 @@ async function verPendientes(){
   if(!responsable){ setMsg('Elige el responsable para revisar sus boletas pendientes.','err'); return; }
   const box = document.getElementById('pendientesBox');
   box.innerHTML = '<p class="small">Buscando en la planilla…</p>';
-  const r = await postConReintento({ accion:'obtenerPendientes', responsable });
+  const periodo = document.getElementById('periodoCierre').value || hoy.slice(0,7);
+  const r = await postConReintento({ accion:'obtenerPendientes', responsable, periodo });
   if(!r.ok){
     box.innerHTML = `<p class="small" style="color:#B91C1C">No se pudo consultar: ${r.error}</p>`;
     return;
@@ -438,7 +443,7 @@ async function enviarCorreoFinal(){
   btn.disabled = true; btn.textContent = '⏳ Enviando correo…';
   setMsg('Enviando correo de cierre de '+responsable+'…','info');
 
-  const payload = { accion:'enviarCorreo', responsable, proyecto: document.getElementById('proyecto').value.trim(), fotos: fotosCierre.map(f=>({data:f.base64, mimeType:f.mime})) };
+  const payload = { accion:'enviarCorreo', responsable, periodo: document.getElementById('periodoCierre').value || hoy.slice(0,7), proyecto: document.getElementById('proyecto').value.trim(), fotos: fotosCierre.map(f=>({data:f.base64, mimeType:f.mime})) };
   const r = await postConReintento(payload);
 
   if(!r.ok){
