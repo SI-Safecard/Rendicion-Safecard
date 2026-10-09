@@ -165,6 +165,11 @@ let historialCierres = []; // {fecha, cantidad, monto} — cierres ya enviados p
 let fotosCierre = []; // {base64, mime} — fotos de TODAS las boletas, subidas juntas al momento de cerrar
 let pendientesCache = null; // último resultado de "Ver boletas pendientes"
 let nextId = 1;
+let cargandoPlanilla = false; // evita que un segundo clic reenvíe la misma carga mientras la primera está en curso
+let eliminandoBoleta = false;
+function nuevoUid(){
+  return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('b'+Date.now().toString(36)+Math.random().toString(36).slice(2,10));
+}
 const hoy = new Date().toISOString().slice(0,10);
 
 function renderHistorialCierres(){
@@ -197,7 +202,7 @@ async function archivoAJpegSiHaceFalta(file){
 }
 
 function agregarBoletaVacia(){
-  const b = { id: nextId++, datos: nuevoDatosVacios() };
+  const b = { id: nextId++, uid: nuevoUid(), datos: nuevoDatosVacios() };
   boletas.push(b);
   renderBoletas();
   setMsg('Boleta agregada. Completa sus datos abajo.','ok');
@@ -347,7 +352,8 @@ function armarDocumentos(){
     fecha:b.datos.fecha, periodo:b.datos.periodo, cuenta:b.datos.cuenta,
     tipoDocumento:b.datos.tipoDocumento, proveedor:b.datos.proveedor,
     numeroDocumento:b.datos.numeroDocumento, descripcion:b.datos.descripcion,
-    proyecto:b.datos.proyecto, monto:b.datos.monto
+    proyecto:b.datos.proyecto, monto:b.datos.monto,
+    idRegistro:b.uid
   }));
 }
 
@@ -377,7 +383,9 @@ async function postConReintento(payload){
 }
 
 async function cargarEnPlanilla(){
+  if(cargandoPlanilla) return;
   if(!validarBoletas()) return;
+  cargandoPlanilla = true;
   const responsable = sel.value;
   const btn = document.getElementById('btnCargar');
   const orig = btn.textContent;
@@ -395,13 +403,18 @@ async function cargarEnPlanilla(){
     const url = r.data.sheetUrl;
     const totalApp = boletas.length;
     const guardadas = r.data.guardadas!=null ? r.data.guardadas : totalApp;
-    const faltan = totalApp - guardadas;
+    const duplicadas = r.data.duplicadas || 0;
+    const faltan = totalApp - guardadas - duplicadas;
     if(faltan > 0){
       setMsg(`⚠️ Se cargaron ${guardadas} de ${totalApp} boleta(s) a nombre de ${responsable} — faltaron ${faltan}.`+(r.data.warn?(' Detalle: '+r.data.warn):' Revisa el registro de Ejecuciones en Apps Script para ver el motivo exacto.')+' '+(url?('Abre la planilla de '+responsable+' para confirmar: '+url):''), 'err');
     } else {
-      setMsg(`✅ ${guardadas} de ${totalApp} boleta(s) cargada(s) en la planilla de ${responsable}.`+(r.data.warn?(' '+r.data.warn):'')+' '+(url?('Ábrela y revísala: '+url):'')+' Puedes seguir agregando boletas los próximos días — cuando termines la estadía, usa la sección "Cerrar rendición y enviar correo" más abajo.', 'ok');
+      setMsg(`✅ ${guardadas} de ${totalApp} boleta(s) cargada(s) en la planilla de ${responsable}.`+(duplicadas>0?` (${duplicadas} ya estaban cargadas y no se duplicaron.)`:'')+(r.data.warn?(' '+r.data.warn):'')+' '+(url?('Ábrela y revísala: '+url):'')+' Puedes seguir agregando boletas los próximos días — cuando termines la estadía, usa la sección "Cerrar rendición y enviar correo" más abajo.', 'ok');
+      // Ya quedaron en la planilla: se limpia el formulario para que no se puedan volver a enviar.
+      boletas = [];
+      renderBoletas();
     }
   }
+  cargandoPlanilla = false;
   btn.disabled = false; btn.textContent = orig;
 }
 
@@ -416,6 +429,10 @@ async function verPendientes(){
     box.innerHTML = `<p class="small" style="color:#B91C1C">No se pudo consultar: ${r.error}</p>`;
     return;
   }
+  if(r.sinConfirmar){
+    box.innerHTML = '<p class="small" style="color:#B91C1C">No se pudo confirmar la respuesta del servidor. Revisa tu conexión y vuelve a presionar "Ver boletas pendientes".</p>';
+    return;
+  }
   pendientesCache = r.data;
   const filas = r.data.filas || [];
   if(!filas.length){
@@ -425,12 +442,34 @@ async function verPendientes(){
   }
   const total = filas.reduce((s,f)=>s+(Number(f.monto)||0),0);
   box.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px">'
-    + '<tr><th style="text-align:left;border-bottom:1px solid var(--bd);padding:4px">Fecha</th><th style="text-align:left;border-bottom:1px solid var(--bd);padding:4px">Proveedor</th><th style="text-align:left;border-bottom:1px solid var(--bd);padding:4px">Descripción</th><th style="text-align:right;border-bottom:1px solid var(--bd);padding:4px">Monto</th></tr>'
-    + filas.map(f=>`<tr><td style="padding:4px">${f.fecha||'—'}</td><td style="padding:4px">${f.proveedor||'—'}</td><td style="padding:4px">${f.descripcion||'—'}</td><td style="padding:4px;text-align:right">$${(Number(f.monto)||0).toLocaleString('es-CL')}</td></tr>`).join('')
-    + `<tr><td colspan="3" style="padding:4px;font-weight:700">Total</td><td style="padding:4px;text-align:right;font-weight:700">$${total.toLocaleString('es-CL')}</td></tr>`
+    + '<tr><th style="text-align:left;border-bottom:1px solid var(--bd);padding:4px">Fecha</th><th style="text-align:left;border-bottom:1px solid var(--bd);padding:4px">Proveedor</th><th style="text-align:left;border-bottom:1px solid var(--bd);padding:4px">Descripción</th><th style="text-align:right;border-bottom:1px solid var(--bd);padding:4px">Monto</th><th style="border-bottom:1px solid var(--bd);padding:4px"></th></tr>'
+    + filas.map((f,i)=>`<tr><td style="padding:4px">${f.fecha||'—'}</td><td style="padding:4px">${f.proveedor||'—'}</td><td style="padding:4px">${f.descripcion||'—'}</td><td style="padding:4px;text-align:right">$${(Number(f.monto)||0).toLocaleString('es-CL')}</td><td style="padding:4px;text-align:right"><button type="button" class="rm-boleta" title="Eliminar esta boleta de la planilla" onclick="eliminarPendiente(${i})">🗑️</button></td></tr>`).join('')
+    + `<tr><td colspan="3" style="padding:4px;font-weight:700">Total</td><td style="padding:4px;text-align:right;font-weight:700">$${total.toLocaleString('es-CL')}</td><td></td></tr>`
     + '</table>'
     + `<p class="small" style="margin-top:6px;color:var(--mt)">${filas.length} boleta(s) pendiente(s) de enviar en "${r.data.tab}". Ahora sube las fotos de todas ellas para adjuntarlas al correo.</p>`;
   document.getElementById('fotosCierreWrap').classList.remove('hidden');
+}
+
+async function eliminarPendiente(idx){
+  if(eliminandoBoleta) return;
+  const f = pendientesCache && pendientesCache.filas && pendientesCache.filas[idx];
+  if(!f){ setMsg('Vuelve a presionar "Ver boletas pendientes de enviar" y reintenta.','err'); return; }
+  const detalle = `${f.fecha||'—'} · ${f.proveedor||'—'} · $${(Number(f.monto)||0).toLocaleString('es-CL')}`;
+  if(!confirm(`¿Eliminar esta boleta de la planilla?\n\n${detalle}\n\nSe borra de la planilla en Drive y no se puede deshacer.`)) return;
+  eliminandoBoleta = true;
+  const responsable = selCierre.value;
+  const periodo = document.getElementById('periodoCierre').value || hoy.slice(0,7);
+  setMsg('Eliminando la boleta de la planilla de '+responsable+'…','info');
+  const r = await postConReintento({ accion:'eliminar', responsable, periodo, id:f.id, fila:f.fila, monto:f.monto, numeroDocumento:f.numeroDocumento });
+  eliminandoBoleta = false;
+  if(!r.ok){
+    setMsg('No se pudo eliminar: '+r.error,'err');
+  }else if(r.sinConfirmar){
+    setMsg('Se envió la eliminación pero no se pudo confirmar la respuesta — revisa la lista actualizada.','ok');
+  }else{
+    setMsg('✅ Boleta eliminada de la planilla. Total y diferencia se recalcularon.','ok');
+  }
+  await verPendientes();
 }
 
 async function enviarCorreoFinal(){
